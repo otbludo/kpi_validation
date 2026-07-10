@@ -135,8 +135,24 @@ curl http://localhost:8000/health
 
 ### 7. Lancer les tests
 
+Lancer tous les tests :
+
 ```bash
 pytest tests/ -v
+```
+
+Lancer un fichier de tests spécifique :
+
+```bash
+pytest tests/test_agent.py -v
+pytest tests/test_api.py -v
+pytest tests/test_validation.py -v
+```
+
+Lancer les tests avec couverture :
+
+```bash
+pytest tests/ -v --cov=app --cov-report=term-missing
 ```
 
 ---

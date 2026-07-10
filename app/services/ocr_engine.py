@@ -1,4 +1,5 @@
 from fastapi import UploadFile
+from app.messages.errors import ERREUR_LECTURE_IMAGE
 
 
 class OCREngine:
@@ -13,7 +14,7 @@ class OCREngine:
             await upload_file.seek(0)  
             return contents
         except Exception as e:
-            raise ValueError(f"Impossible de lire les octets de l'image : {str(e)}")
+            raise ValueError(ERREUR_LECTURE_IMAGE.format(str(e)))
 
 
 ocr_engine = OCREngine()
