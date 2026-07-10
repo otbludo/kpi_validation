@@ -17,7 +17,10 @@ class Settings:
     KYC_CALLBACK_TIMEOUT: float = float(os.getenv("KYC_CALLBACK_TIMEOUT", "10"))
     
     # CORS Configuration
-    ALLOWED_ORIGINS: List[str] = os.getenv("ALLOWED_ORIGINS", "*").split(",") if os.getenv("ALLOWED_ORIGINS") else ["*"]
+    ALLOWED_ORIGINS: List[str] = os.getenv(
+        "ALLOWED_ORIGINS",
+        "http://localhost:5173,http://127.0.0.1:5173,https://onutechagent.vercel.app",
+    ).split(",")
     
     # OCR Configuration
     OCR_LANGUAGE: str = os.getenv("OCR_LANGUAGE", "fra")

@@ -1,32 +1,26 @@
 import os
 from typing import Optional, Tuple
-
 import cv2
 import numpy as np
 from insightface.app import FaceAnalysis
 
 
 class InsightFaceEngine:
-    DEFAULT_MODEL = "buffalo_l"
-    DEFAULT_PROVIDERS = ["CPUExecutionProvider"]
-    DEFAULT_THRESHOLD = 0.40
-    DEFAULT_DET_SIZE = (640, 640)
-
     def __init__(
         self,
         model_name: Optional[str] = None,
         providers: Optional[list] = None,
         det_size: Optional[tuple] = None,
         threshold: Optional[float] = None,
-        ctx_id: int = -1,
+        ctx_id: Optional[int] = None,
     ):
-        self.model_name = model_name or os.getenv("INSIGHTFACE_MODEL", self.DEFAULT_MODEL)
-        self.providers = providers or os.getenv("INSIGHTFACE_PROVIDERS", ",".join(self.DEFAULT_PROVIDERS)).split(",")
-        self.det_size = det_size or self.DEFAULT_DET_SIZE
+        self.model_name = model_name or os.getenv("INSIGHTFACE_MODEL", "buffalo_l")
+        self.providers = providers or os.getenv("INSIGHTFACE_PROVIDERS", "CPUExecutionProvider").split(",")
+        self.det_size = det_size or (640, 640)
         self.threshold = threshold if threshold is not None else float(
-            os.getenv("INSIGHTFACE_THRESHOLD", self.DEFAULT_THRESHOLD)
+            os.getenv("INSIGHTFACE_THRESHOLD", "0.40")
         )
-        self.ctx_id = int(os.getenv("INSIGHTFACE_CTX_ID", ctx_id))
+        self.ctx_id = int(os.getenv("INSIGHTFACE_CTX_ID", str(ctx_id if ctx_id is not None else -1)))
 
         self.face_app = FaceAnalysis(
             name=self.model_name,
@@ -36,6 +30,7 @@ class InsightFaceEngine:
             ctx_id=self.ctx_id,
             det_size=self.det_size,
         )
+        
 
     @staticmethod
     def _read_image(image_bytes: bytes) -> np.ndarray:
@@ -45,12 +40,14 @@ class InsightFaceEngine:
             raise ValueError("Image invalide")
         return img
 
+
     @staticmethod
     def _compute_cosine_similarity(embedding1: np.ndarray, embedding2: np.ndarray) -> float:
         dot_product = np.dot(embedding1, embedding2)
         norm1 = np.linalg.norm(embedding1)
         norm2 = np.linalg.norm(embedding2)
         return float(dot_product / (norm1 * norm2))
+
 
     def compare(
         self,
