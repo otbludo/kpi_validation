@@ -17,7 +17,12 @@ def service():
 # ---------------------------------------------------------------------------
 
 def test_load_template_replaces_variables(service):
-    html = service._load_template("welcome", user_name="Alice")
+    html = service._load_template(
+        "warning",
+        user_name="Alice",
+        invalid_fields="<li>Sexe</li>",
+        total_percentage=88.24,
+    )
 
     assert "Alice" in html
     assert "{{user_name}}" not in html
@@ -79,8 +84,10 @@ def test_send_email_success(service, monkeypatch):
     ok = service.send_email(
         email_to="dest@example.com",
         subject="Sujet",
-        template_name="welcome",
+        template_name="warning",
         user_name="Alice",
+        invalid_fields="<li>Sexe</li>",
+        total_percentage=88.24,
     )
 
     assert ok is True
@@ -103,6 +110,8 @@ def test_send_email_raises_http_exception_on_failure(service, monkeypatch):
         service.send_email(
             email_to="dest@example.com",
             subject="Sujet",
-            template_name="welcome",
+            template_name="warning",
             user_name="Alice",
+            invalid_fields="<li>Sexe</li>",
+            total_percentage=88.24,
         )
