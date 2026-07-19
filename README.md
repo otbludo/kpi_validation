@@ -6,7 +6,7 @@
 flowchart LR
     A[Client / Frontend] -->|POST /api/v1/kyc/process| B[FastAPI Router]
     B --> C[KYCAgent.process]
-    C --> D[Groq Vision]
+    C --> D[OpenRouter Vision]
     C --> E[InsightFace]
     C --> F[OCR Engine]
     C --> G[Mailtrap]
@@ -26,13 +26,13 @@ flowchart LR
 
 1. **Réception** : La route `POST /api/v1/kyc/process` reçoit un formulaire `multipart/form-data` contenant les champs textuels et les fichiers images.
 2. **Extraction images** : Les octets des fichiers sont extraits via `ocr_engine`.
-3. **Analyse document (Groq Vision)** : Les images du document (CNI recto/verso ou passeport) sont envoyées au modèle `meta-llama/llama-4-scout-17b-16e-instruct` qui vérifie la cohérence des champs textuels déclarés.
+3. **Analyse document (OpenRouter Vision)** : Les images du document (CNI recto/verso ou passeport) sont envoyées au modèle `meta-llama/llama-4-scout` qui vérifie la cohérence des champs textuels déclarés.
 4. **Reconnaissance faciale (InsightFace)** : Le `photo_profile` est comparé à la photo du document via `buffalo_l` + cosine similarity. Si les visages ne correspondent pas, `photo_profile` est marqué `invalid`.
-5. **Validation date d'expiration** : Le champ `date_expiration` fait partie des champs vérifiés par Groq Vision (`VERIFIED_FIELDS`).
-6. **Calcul du score** : Répartition équitable du score entre les champs actifs (selon `type_document`). Un champ `invalid` ou `not_required` ne contribue pas au `total_percentage`.
-7. **Notification email** : Si des champs sont invalides, un email de type `warning` est envoyé via Mailtrap.
+5. **Validation locale** : Les champs `date_naissance`, `date_expiration`, `sexe`, `num_CNI_passeport` et `nom_et_prenom` sont validés localement (format, bornes, valeurs autorisées).
+6. **Calcul du score** : `total_percentage` commence à 100. Chaque champ invalide dans les champs à pénalité retire sa pénalité. `state_status` est `valide` uniquement si `total_percentage >= 60`.
+7. **Notification email** : Si des champs sont invalides, un email de type `warning` est envoyé via Mailtrap avec les raisons d'invalidité.
 8. **Callback HTTP** : Un `POST` est envoyé à `KYC_CALLBACK_URL` avec le score et la raison du rejet.
-9. **Réponse** : Retour d'un objet `KYCOutputResponse` avec le statut par champ et le score global.
+9. **Réponse** : Retour d'un objet `KYCOutputResponse` avec le statut par champ, le score global et la description des champs invalides.
 
 ---
 
@@ -41,7 +41,7 @@ flowchart LR
 | Composant | Technologie | Rôle |
 |-----------|-------------|------|
 | **API** | FastAPI + Uvicorn | Route principale, validation Pydantic |
-| **IA / Vision** | Groq API (`llama-4-scout`) | Analyse OCR et validation des champs textuels |
+| **IA / Vision** | OpenRouter API (`meta-llama/llama-4-scout`) | Analyse OCR et validation des champs textuels |
 | **Reconnaissance faciale** | InsightFace (`buffalo_l`, ONNX Runtime) | Comparaison `photo_profile` vs photo document |
 | **Email** | Mailtrap (SMTP) | Notification des champs invalides |
 | **Callback** | httpx | Notification du service appelant |
@@ -51,9 +51,10 @@ flowchart LR
 
 ### Modèles et seuils
 
-- **Groq Vision** : `meta-llama/llama-4-scout-17b-16e-instruct`, `temperature=0.0`, `json_mode=true`
+- **OpenRouter Vision** : `meta-llama/llama-4-scout`, `temperature=0.0`
 - **InsightFace** : modèle `buffalo_l`, seuil de similarité cosinus >= `0.40` par défaut
-- **Tesseract** : non utilisé dans le pipeline final (seul Groq Vision valide les textes)
+- **Score global** : commence à 100, pénalités par champ invalide, seuil de validité à 60
+- **Tesseract** : non utilisé dans le pipeline final (seul OpenRouter Vision valide les textes)
 
 ---
 
@@ -61,7 +62,7 @@ flowchart LR
 
 - Python 3.12+
 - Docker & Docker Compose
-- Clé API Groq (`GROQ_API_KEY`)
+- Clé API OpenRouter (`OPENROUTER_API_KEY`)
 - Compte Mailtrap (SMTP)
 - (Optionnel) GPU NVIDIA pour InsightFace sinon CPU
 
@@ -100,7 +101,7 @@ cp .env.example .env
 Variables obligatoires :
 
 ```env
-GROQ_API_KEY=...
+OPENROUTER_API_KEY=...
 SMTP_HOST=sandbox.smtp.mailtrap.io
 SMTP_PORT=2525
 SMTP_USER=...
