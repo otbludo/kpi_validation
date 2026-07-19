@@ -11,7 +11,7 @@ python-dotenv==1.2.2
 httpx==0.28.1
 
 # KYC processing (vision / OCR / face)
-groq==1.1.2
+openai==1.77.0
 insightface==1.0.1
 opencv-python==4.11.0.86
 numpy==2.5.1

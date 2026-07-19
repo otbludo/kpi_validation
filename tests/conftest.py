@@ -13,7 +13,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-os.environ.setdefault("GROQ_API_KEY", "test-groq-key")
+os.environ.setdefault("OPENROUTER_API_KEY", "test-openrouter-key")
 os.environ.setdefault("KYC_CALLBACK_URL", "http://callback.test/kyc/callback")
 os.environ.setdefault("KYC_CALLBACK_TOKEN", "test-token")
 os.environ.setdefault("KYC_CALLBACK_TIMEOUT", "5")
@@ -67,6 +67,14 @@ def _make_form(type_document="CNI", **kwargs):
         kyc_id="kyc-123",
         adresse_mail="user@example.com",
         nom_et_prenom="Jean Dupont",
+        date_naissance="2000-01-01",
+        date_expiration="2035-01-01",
+        sexe="M",
+        num_CNI_passeport="ABC123",
+        pays="Cameroun",
+        region="Centre",
+        ville="Yaoundé",
+        adresse="Rue 1",
     )
     defaults.update(kwargs)
     return SimpleNamespace(**defaults)
@@ -90,7 +98,7 @@ def valid_output_dict():
     """
     raw = _make_raw_output()
     for field in ALL_FIELDS:
-        raw[field]["percentage"] = 5.88
+        raw[field]["percentage"] = 0.0
     raw["total_percentage"] = 100.0
     raw["state_status"] = "valide"
     return raw

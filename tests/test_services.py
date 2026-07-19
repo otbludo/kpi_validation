@@ -1,113 +1,167 @@
 """
 Tests des services :
-- GroqVisionEngine : helpers (base64, nettoyage, construction du message)
+- OpenRouterVisionEngine : analyse JSON via OpenRouter (Llama 4 Scout)
 - KYCCallbackService : envoi du callback (httpx mocké)
 - OCREngine : lecture des octets d'un UploadFile
 """
+import os
+import json
 import base64
 import pytest
 from types import SimpleNamespace
 import app.services.kyc_callback as cb_module
-from app.services.groq_vision import GroqVisionEngine
+from app.services.openrouter_vision import OpenRouterVisionEngine
 from app.services.kyc_callback import KYCCallbackService
 from app.services.ocr_engine import ocr_engine
 
 
 # ---------------------------------------------------------------------------
-# GroqVisionEngine
+# OpenRouterVisionEngine
 # ---------------------------------------------------------------------------
 
-def test_bytes_to_base64_url_prefix_and_content():
-    data = b"hello-image"
-    url = GroqVisionEngine.bytes_to_base64_url(data)
-
-    assert url.startswith("data:image/jpeg;base64,")
-    encoded = url.split(",", 1)[1]
-    assert base64.b64decode(encoded) == data
-
-
-def test_clean_content_strips_json_fence():
-    raw = '```json\n{"a": 1}\n```'
-    assert GroqVisionEngine._clean_content(raw) == '{"a": 1}'
-
-
-def test_clean_content_strips_plain_fence():
-    raw = '```\n{"a": 1}\n```'
-    assert GroqVisionEngine._clean_content(raw) == '{"a": 1}'
-
-
-def test_clean_content_leaves_plain_text():
-    raw = '{"a": 1}'
-    assert GroqVisionEngine._clean_content(raw) == '{"a": 1}'
-
-
 def test_build_message_content_mixes_text_and_images():
-    engine = GroqVisionEngine(api_key="test-key")
+    engine = OpenRouterVisionEngine(api_key="test-key")
     content = engine._build_message_content(
         "mon prompt",
-        images=[b"raw-bytes", "data:image/png;base64,AAAA"],
+        images=[b"raw-bytes", b"other-bytes"],
     )
 
     assert content[0] == {"type": "text", "text": "mon prompt"}
     assert content[1]["type"] == "image_url"
     assert content[1]["image_url"]["url"].startswith("data:image/jpeg;base64,")
-    assert content[2]["image_url"]["url"] == "data:image/png;base64,AAAA"
+    assert base64.b64decode(content[1]["image_url"]["url"].split(",", 1)[1]) == b"raw-bytes"
+    assert base64.b64decode(content[2]["image_url"]["url"].split(",", 1)[1]) == b"other-bytes"
 
 
 def test_build_message_content_without_images():
-    engine = GroqVisionEngine(api_key="test-key")
+    engine = OpenRouterVisionEngine(api_key="test-key")
     content = engine._build_message_content("prompt seul", images=None)
 
     assert len(content) == 1
     assert content[0]["type"] == "text"
 
 
-class _FakeGroqClient:
-    """Client Groq factice capturant les kwargs et renvoyant un contenu fixe."""
-    def __init__(self, content):
-        self._content = content
-        self.captured = {}
-        outer = self
+def test_analyze_json_returns_parsed_dict(monkeypatch):
+    class _FakeResponse:
+        class _Choice:
+            class _Message:
+                content = '{"status": "ok"}'
+            message = _Message()
+        choices = [_Choice()]
 
-        class _Completions:
-            def create(self, **kwargs):
-                outer.captured = kwargs
-                message = SimpleNamespace(content=outer._content)
-                choice = SimpleNamespace(message=message)
-                return SimpleNamespace(choices=[choice])
+    class _FakeCompletions:
+        def create(self, **kwargs):
+            return _FakeResponse()
 
-        self.chat = SimpleNamespace(completions=_Completions())
+    class _FakeChat:
+        completions = _FakeCompletions()
 
+    class _FakeClient:
+        def __init__(self, *args, **kwargs):
+            self.chat = _FakeChat()
 
-def test_analyze_returns_cleaned_content():
-    engine = GroqVisionEngine(api_key="test-key")
-    engine.client = _FakeGroqClient('```json\n{"x": 1}\n```')
+    monkeypatch.setattr("app.services.openrouter_vision.OpenAI", lambda **kwargs: _FakeClient(**kwargs))
+    engine = OpenRouterVisionEngine(api_key="test-key")
 
-    result = engine.analyze("prompt", images=[b"img"])
+    result = engine.analyze_json("prompt", images=[b"img"])
 
-    assert result == '{"x": 1}'
-    assert engine.client.captured["response_format"] == {"type": "json_object"}
-    assert engine.client.captured["temperature"] == 0.0
-
-
-def test_analyze_json_parses_dict():
-    engine = GroqVisionEngine(api_key="test-key")
-    engine.client = _FakeGroqClient('{"a": 1, "b": "ok"}')
-
-    result = engine.analyze_json("prompt")
-
-    assert result == {"a": 1, "b": "ok"}
+    assert result == {"status": "ok"}
 
 
-def test_analyze_without_json_mode_omits_response_format():
-    engine = GroqVisionEngine(api_key="test-key")
-    engine.client = _FakeGroqClient('texte libre')
+def test_analyze_json_returns_empty_dict_on_error(monkeypatch):
+    class _FakeCompletions:
+        def create(self, **kwargs):
+            raise Exception("network error")
 
-    result = engine.analyze("prompt", json_mode=False)
+    class _FakeChat:
+        completions = _FakeCompletions()
 
-    assert result == "texte libre"
-    assert "response_format" not in engine.client.captured
+    class _FakeClient:
+        def __init__(self, *args, **kwargs):
+            self.chat = _FakeChat()
 
+    monkeypatch.setattr("app.services.openrouter_vision.OpenAI", lambda **kwargs: _FakeClient(**kwargs))
+    engine = OpenRouterVisionEngine(api_key="test-key")
+
+    result = engine.analyze_json("prompt", images=[b"img"])
+
+    assert result == {}
+
+
+def test_analyze_json_passes_correct_config(monkeypatch):
+    captured = {}
+
+    class _FakeResponse:
+        class _Choice:
+            class _Message:
+                content = '{"ok": true}'
+            message = _Message()
+        choices = [_Choice()]
+
+    class _FakeCompletions:
+        def create(self, **kwargs):
+            captured.update(kwargs)
+            return _FakeResponse()
+
+    class _FakeChat:
+        completions = _FakeCompletions()
+
+    class _FakeClient:
+        def __init__(self, *args, **kwargs):
+            self.chat = _FakeChat()
+
+    monkeypatch.setattr("app.services.openrouter_vision.OpenAI", lambda **kwargs: _FakeClient(**kwargs))
+    engine = OpenRouterVisionEngine(api_key="test-key")
+
+    result = engine.analyze_json("mon prompt", images=[b"img1", b"img2"])
+
+    assert result == {"ok": True}
+    assert captured["model"] == "meta-llama/llama-4-scout"
+    assert captured["temperature"] == 0.0
+    assert captured["response_format"] == {"type": "json_object"}
+
+
+def test_analyze_json_uses_openrouter_base_url(monkeypatch):
+    init_kwargs = {}
+
+    class _FakeResponse:
+        class _Choice:
+            class _Message:
+                content = '{"ok": true}'
+            message = _Message()
+        choices = [_Choice()]
+
+    class _FakeCompletions:
+        def create(self, **kwargs):
+            return _FakeResponse()
+
+    class _FakeChat:
+        completions = _FakeCompletions()
+
+    class _FakeClient:
+        def __init__(self, **kwargs):
+            init_kwargs.update(kwargs)
+            self.chat = _FakeChat()
+
+    monkeypatch.setattr("app.services.openrouter_vision.OpenAI", lambda **kwargs: _FakeClient(**kwargs))
+    engine = OpenRouterVisionEngine(api_key="test-key")
+    engine.analyze_json("prompt", images=[b"img"])
+
+    assert init_kwargs["base_url"] == "https://openrouter.ai/api/v1"
+    assert init_kwargs["api_key"] == "test-key"
+
+
+def test_extract_json_parses_pure_json():
+    assert OpenRouterVisionEngine._extract_json('{"a": 1}') == {"a": 1}
+
+
+def test_extract_json_parses_json_in_text():
+    raw = "Voici le résultat : {\"status\": \"ok\", \"value\": 42} Merci."
+    assert OpenRouterVisionEngine._extract_json(raw) == {"status": "ok", "value": 42}
+
+
+def test_extract_json_returns_empty_on_no_json():
+    assert OpenRouterVisionEngine._extract_json("pas de json ici") == {}
 
 
 # ---------------------------------------------------------------------------
@@ -124,7 +178,6 @@ class _FakeResponse:
 
 
 class _FakeAsyncClient:
-    """Client httpx factice qui capture le dernier appel POST."""
     captured = {}
     should_fail = False
 

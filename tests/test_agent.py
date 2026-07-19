@@ -138,7 +138,7 @@ async def test_process_end_to_end(agent, monkeypatch):
     monkeypatch.setattr(
         agent.vision_engine,
         "analyze_json",
-        lambda **kwargs: _make_raw_output({"nom_et_prenom": "invalid"}),
+        lambda **kwargs: _make_raw_output({"photo_profile": "invalid", "nom_et_prenom": "invalid", "num_CNI_passeport": "invalid"}),
     )
 
     mail_calls = []
@@ -156,6 +156,7 @@ async def test_process_end_to_end(agent, monkeypatch):
 
     assert isinstance(result, KYCOutputData)
     assert result.state_status == "invalide"
+    assert result.total_percentage == 20.0
     assert result.nom_et_prenom.status_validation == "invalid"
     assert result.numero_NUI.status_validation == "valid"
     assert len(mail_calls) == 1

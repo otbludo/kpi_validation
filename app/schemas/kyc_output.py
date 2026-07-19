@@ -6,7 +6,7 @@ T = TypeVar('T')
 class ValidatedField(BaseModel, Generic[T]):
     value: T = Field(..., description="La valeur brute du champ analysé")
     status_validation: str = Field(..., description="Statut final ('valid' ou 'invalid')")
-    percentage: float = Field(default=0.0, description="Part de pourcentage attribuée à ce champ (0 si le champ n'est pas pris en compte)")
+    percentage: float = Field(default=0.0, description="Pénalité appliquée si le champ est invalide (0 si valide ou non pris en compte)")
 
 class KYCOutputData(BaseModel):
     photo_profile: ValidatedField[str]
@@ -29,6 +29,7 @@ class KYCOutputData(BaseModel):
     photo_passeport: ValidatedField[Optional[str]]
     total_percentage: float = Field(default=0.0, description="Score global de validation (somme des parts des champs valides), sur 100")
     state_status: str = Field(default="valide", description="État global du dossier : 'valide' si tous les champs sont valides, sinon 'invalide'")
+    description: str = Field(default="", description="Description des champs invalides et leurs raisons")
 
 class KYCOutputResponse(BaseModel):
     donnees_output: KYCOutputData
