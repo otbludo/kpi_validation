@@ -21,3 +21,11 @@ README.md
 Dockerfile
 docker-compose.yml
 .dockerignore
+tests/*.png
+tests/*.jpeg
+tests/*.jpg
+tests/**/*.png
+tests/**/*.jpeg
+tests/**/*.jpg
+eval_imga_flou.ipynb
+eval_accuracy.ipynb

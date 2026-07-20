@@ -1,4 +1,5 @@
 import re
+import asyncio
 from datetime import datetime
 from app.schemas.kyc_input import KYCFormData
 from app.schemas.kyc_output import KYCOutputData
@@ -7,6 +8,7 @@ from app.services.openrouter_vision import openrouter_vision
 from app.services.insightface import insightface_engine
 from app.services.mailtrap.mail_service import mailService
 from app.services.kyc_callback import kyc_callback_service
+from app.services.blur_detection import blur_detection_service
 
 
 class KYCAgent:
@@ -225,7 +227,7 @@ Format JSON attendu (ne retourne que les champs listés ci-dessous avec leurs st
         return "Champs invalides ou non conformes à la pièce d'identité : " + ", ".join(parts) + "."
 
 
-    def _notify_invalid_fields(self, raw_output: dict, form_data: KYCFormData) -> None:
+    async def _notify_invalid_fields(self, raw_output: dict, form_data: KYCFormData) -> None:
         invalid_fields = self._get_invalid_fields_with_reasons(raw_output, form_data)
 
         if not invalid_fields:
@@ -234,7 +236,7 @@ Format JSON attendu (ne retourne que les champs listés ci-dessous avec leurs st
         invalid_fields_html = "".join(f"<li>{item['label']} ({item['reason']})</li>" for item in invalid_fields)
 
         try:
-            mailService.send_email(
+            await mailService.send_email(
                 email_to=form_data.adresse_mail,
                 subject="Alerte KYC : champs invalides détectés",
                 template_name="warning",
@@ -364,6 +366,13 @@ Format JSON attendu (ne retourne que les champs listés ci-dessous avec leurs st
         if not images_bytes:
             raise ValueError("Aucun fichier d'image valide n'a pu être extrait du formulaire.")
 
+        is_blurry, blur_reasons = await asyncio.to_thread(blur_detection_service.check_images, images_bytes)
+        if is_blurry:
+            return {
+                "message": "Un ou plusieurs documents sont flous ou illisibles. Veuillez fournir une image plus claire.",
+                "reasons": blur_reasons,
+            }
+
         prompt_text = self._build_user_prompt(form_data)
         raw_output = self.vision_engine.analyze_json(
             prompt_text=prompt_text,
@@ -393,7 +402,7 @@ Format JSON attendu (ne retourne que les champs listés ci-dessous avec leurs st
         raw_output["description"] = self._build_rejection_reason(invalid_fields_with_reasons)
 
         self._compute_percentages(raw_output, form_data)
-        self._notify_invalid_fields(raw_output, form_data)
+        await self._notify_invalid_fields(raw_output, form_data)
         await self._send_callback(raw_output, form_data)
 
         return KYCOutputData(**raw_output)

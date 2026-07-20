@@ -9,7 +9,7 @@ from openai import OpenAI
 load_dotenv()
 
 class OpenRouterVisionEngine:
-    DEFAULT_MODEL = "meta-llama/llama-4-scout"
+    DEFAULT_MODEL = "meta-llama/llama-4-scout-17b-16e-instruct"
 
     def __init__(self, api_key: Optional[str] = None, model: Optional[str] = None):
         self.client = None

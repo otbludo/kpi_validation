@@ -116,7 +116,7 @@ def test_analyze_json_passes_correct_config(monkeypatch):
     result = engine.analyze_json("mon prompt", images=[b"img1", b"img2"])
 
     assert result == {"ok": True}
-    assert captured["model"] == "meta-llama/llama-4-scout"
+    assert captured["model"] == "meta-llama/llama-4-scout-17b-16e-instruct"
     assert captured["temperature"] == 0.0
     assert captured["response_format"] == {"type": "json_object"}
 

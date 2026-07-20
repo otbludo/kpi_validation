@@ -6,6 +6,7 @@ Tests de la logique de validation de KYCAgent :
 """
 import pytest
 from app.agents.kyc_agent import KYCAgent
+from app.services.blur_detection import blur_detection_service
 
 
 @pytest.fixture
@@ -158,6 +159,11 @@ def test_process_adds_description_with_invalid_fields(agent, monkeypatch):
             "num_CNI_passeport": {"value": "ABC123", "status_validation": "valid"},
             "date_expiration": {"value": "2000-01-01", "status_validation": "valid"},
         },
+    )
+    monkeypatch.setattr(
+        blur_detection_service,
+        "check_images",
+        lambda images_bytes: (False, []),
     )
 
     mail_calls = []

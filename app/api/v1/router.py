@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.responses import JSONResponse
 from app.agents.kyc_agent import kyc_agent
 from app.schemas.kyc_input import build_kyc_form_dependency
 from app.schemas.kyc_output import KYCOutputResponse
@@ -7,10 +8,12 @@ from app.messages.errors import DONNEES_FORMULAIRE_INVALIDES, ERREUR_INFRASTRUCT
 api_router = APIRouter()
 
 
-@api_router.post("/kyc/process", response_model=KYCOutputResponse, status_code=status.HTTP_200_OK)
+@api_router.post("/kyc/process", status_code=status.HTTP_200_OK)
 async def process_kyc_validation(form_data = Depends(build_kyc_form_dependency())):
     try:
         output_data = await kyc_agent.process(form_data)
+        if isinstance(output_data, dict) and "message" in output_data:
+            return JSONResponse(content=output_data)
         return KYCOutputResponse(donnees_output=output_data)
     except ValueError as e:
         raise HTTPException(
