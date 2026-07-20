@@ -8,7 +8,6 @@ from app.services.openrouter_vision import openrouter_vision
 from app.services.insightface import insightface_engine
 from app.services.mailtrap.mail_service import mailService
 from app.services.kyc_callback import kyc_callback_service
-from app.services.blur_detection import blur_detection_service
 
 
 class KYCAgent:
@@ -366,7 +365,7 @@ Format JSON attendu (ne retourne que les champs listés ci-dessous avec leurs st
         if not images_bytes:
             raise ValueError("Aucun fichier d'image valide n'a pu être extrait du formulaire.")
 
-        is_blurry, blur_reasons = await asyncio.to_thread(blur_detection_service.check_images, images_bytes)
+        is_blurry, blur_reasons = await asyncio.to_thread(openrouter_vision.check_blur, images_bytes)
         if is_blurry:
             return {
                 "message": "Un ou plusieurs documents sont flous ou illisibles. Veuillez fournir une image plus claire.",

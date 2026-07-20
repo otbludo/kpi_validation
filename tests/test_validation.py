@@ -6,7 +6,7 @@ Tests de la logique de validation de KYCAgent :
 """
 import pytest
 from app.agents.kyc_agent import KYCAgent
-from app.services.blur_detection import blur_detection_service
+import app.agents.kyc_agent as agent_module
 
 
 @pytest.fixture
@@ -161,9 +161,9 @@ def test_process_adds_description_with_invalid_fields(agent, monkeypatch):
         },
     )
     monkeypatch.setattr(
-        blur_detection_service,
-        "check_images",
-        lambda images_bytes: (False, []),
+        agent_module.openrouter_vision,
+        "check_blur",
+        lambda images: (False, []),
     )
 
     mail_calls = []

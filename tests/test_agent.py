@@ -7,7 +7,6 @@ import pytest
 import app.agents.kyc_agent as agent_module
 from app.agents.kyc_agent import KYCAgent
 from app.services.insightface import insightface_engine
-from app.services.blur_detection import blur_detection_service
 from app.schemas.kyc_output import KYCOutputData
 from tests.conftest import ALL_FIELDS, _make_raw_output
 
@@ -144,9 +143,9 @@ async def test_process_end_to_end(agent, monkeypatch):
         lambda **kwargs: _make_raw_output({"photo_profile": "invalid", "nom_et_prenom": "invalid", "num_CNI_passeport": "invalid"}),
     )
     monkeypatch.setattr(
-        blur_detection_service,
-        "check_images",
-        lambda images_bytes: (False, []),
+        agent_module.openrouter_vision,
+        "check_blur",
+        lambda images: (False, []),
     )
 
     mail_calls = []
@@ -181,9 +180,9 @@ async def test_process_raises_when_no_image(agent, monkeypatch):
 
     monkeypatch.setattr(agent_module.ocr_engine, "get_image_bytes", fake_get_bytes)
     monkeypatch.setattr(
-        blur_detection_service,
-        "check_images",
-        lambda images_bytes: (False, []),
+        agent_module.openrouter_vision,
+        "check_blur",
+        lambda images: (False, []),
     )
     form = _full_form(type_document="CNI", photo_CNI_recto=None, photo_CNI_verso=None)
 
