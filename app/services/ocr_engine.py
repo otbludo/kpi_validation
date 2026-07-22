@@ -1,5 +1,5 @@
 from fastapi import UploadFile
-from app.messages.errors import ERREUR_LECTURE_IMAGE
+from app.messages.errors import IMAGE_READ_ERROR
 
 
 class OCREngine:
@@ -14,7 +14,7 @@ class OCREngine:
             await upload_file.seek(0)  
             return contents
         except Exception as e:
-            raise ValueError(ERREUR_LECTURE_IMAGE.format(str(e)))
+            raise ValueError(IMAGE_READ_ERROR.format(str(e)))
 
 
 ocr_engine = OCREngine()

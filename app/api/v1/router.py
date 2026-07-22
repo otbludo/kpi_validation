@@ -3,7 +3,7 @@ from fastapi.security import HTTPBearer
 from app.agents.kyc_agent import kyc_agent
 from app.schemas.kyc_input import build_kyc_form_dependency
 from app.schemas.kyc_output import KYCOutputResponse
-from app.messages.errors import DONNEES_FORMULAIRE_INVALIDES, ERREUR_INFRASTRUCTURE_INTERNE
+from app.messages.errors import INVALID_FORM_DATA, INTERNAL_SERVER_ERROR
 from app.security.dependencies import get_current_user
 
 api_router = APIRouter()
@@ -24,10 +24,10 @@ async def process_kyc_validation(
     except ValueError as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=DONNEES_FORMULAIRE_INVALIDES.format(str(e)),
+            detail=INVALID_FORM_DATA.format(str(e)),
         )
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=ERREUR_INFRASTRUCTURE_INTERNE.format(str(e)),
+            detail=INTERNAL_SERVER_ERROR.format(str(e)),
         )

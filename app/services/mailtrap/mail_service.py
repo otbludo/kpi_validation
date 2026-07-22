@@ -4,7 +4,7 @@ import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from pathlib import Path
-from app.messages.errors import ERREUR_ENVOI_EMAIL
+from app.messages.errors import EMAIL_SEND_ERROR
 
 
 SMTP_HOST = os.getenv("SMTP_HOST")
@@ -53,7 +53,7 @@ class MailService:
         except Exception as e:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, 
-                detail=ERREUR_ENVOI_EMAIL.format(str(e))
+                detail=EMAIL_SEND_ERROR.format(str(e))
             )
 
 

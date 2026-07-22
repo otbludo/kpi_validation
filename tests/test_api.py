@@ -142,7 +142,7 @@ async def test_process_rejects_invalid_jwt(monkeypatch):
 
     assert response.status_code == 401
     body = response.json()
-    assert body["detail"] == "Token invalide"
+    assert body["detail"] == "Invalid JWT token"
 
 
 async def test_process_handles_internal_error(monkeypatch):

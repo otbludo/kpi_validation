@@ -21,6 +21,7 @@ class OpenRouterVisionEngine:
                 api_key=key,
             )
 
+
     @staticmethod
     def _build_message_content(prompt_text: str, images: Optional[List[bytes]]) -> list:
         message_content = [{"type": "text", "text": prompt_text}]
@@ -34,6 +35,7 @@ class OpenRouterVisionEngine:
             })
         return message_content
 
+
     @staticmethod
     def _extract_json(text: str) -> dict:
         match = re.search(r'\{.*\}', text, re.DOTALL)
@@ -43,6 +45,7 @@ class OpenRouterVisionEngine:
             return json.loads(match.group())
         except Exception:
             return {}
+
 
     def analyze_json(self, prompt_text: str, images: Optional[List[bytes]] = None) -> dict:
         if self.client is None:
@@ -65,6 +68,7 @@ class OpenRouterVisionEngine:
         except Exception as e:
             print(f"[OpenRouter Error]: {str(e)}")
             return {}
+
 
     def check_blur(self, images: List[bytes]) -> Tuple[bool, List[str]]:
         if self.client is None:
