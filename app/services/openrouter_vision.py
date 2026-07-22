@@ -86,12 +86,13 @@ class OpenRouterVisionEngine:
                                 {
                                     "type": "text",
                                     "text": (
-                                        "Analyse attentivement la qualité visuelle de ce document d'identité. "
-                                        "Est-ce que cette image est floue ? "
-                                        "Réponds UNIQUEMENT par le mot 'flou' si le texte ou les détails importants "
-                                        "sont difficiles à lire à cause d'un manque de mise au point ou d'un bougé. "
-                                        "Réponds UNIQUEMENT par le mot 'lisible' si l'image est nette, stable et exploitable. "
-                                        "Ne mets aucun autre mot, aucune ponctuation, aucune explication."
+                                        "Évalue UNIQUEMENT la netteté de la prise de vue de cette image. "
+                                        "Considère uniquement s'il y a un flou de bougé ou un problème de mise au point (optique).\n\n"
+                                        "ATTENTION : Si le document papier est vieux, usé, plié ou taché, mais que la photo est NETTE et pas floue, réponds 'lisible'.\n\n"
+                                        "Règles de réponse :\n"
+                                        "- Réponds 'flou' SEULEMENT si l'image elle-même souffre d'un flou d'appareil photo (flou de bougé ou mise au point ratée).\n"
+                                        "- Réponds 'lisible' si la prise de vue est nette et stable, même si le document d'origine est usé ou ancien.\n\n"
+                                        "Réponds UNIQUEMENT par le mot 'flou' ou 'lisible', sans aucun autre mot ni ponctuation."
                                     ),
                                 },
                                 {

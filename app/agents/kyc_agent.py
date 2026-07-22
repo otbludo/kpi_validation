@@ -77,7 +77,7 @@ class KYCAgent:
         "photo_passeport": 50,
         "nom_et_prenom": 30,
         "date_naissance": 20,
-        "sexe": 30,
+        "sexe": 20,
         "pays": 25,
         "num_CNI_passeport": 50,
         "date_expiration": 30,
@@ -98,7 +98,6 @@ Données déclarées par l'utilisateur :
 - date_expiration : {user_data.date_expiration}
 - pays : {user_data.pays}
 - region : {user_data.region}
-- ville : {user_data.ville}
 
 Consignes d'analyse visuelle ultra-strictes :
 1. Regarde TRÈS ATTENTIVEMENT les images de la pièce d'identité jointes (Recto et Verso ou Passeport). Ne devine pas, lis ce qui est écrit sur les documents.
@@ -117,7 +116,6 @@ Format JSON attendu (ne retourne que les champs listés ci-dessous avec leurs st
     "sexe": {{"value": "{user_data.sexe}", "status_validation": "valid"}},
     "pays": {{"value": "{user_data.pays}", "status_validation": "valid"}},
     "region": {{"value": "{user_data.region}", "status_validation": "valid"}},
-    "ville": {{"value": "{user_data.ville}", "status_validation": "valid"}},
     "num_CNI_passeport": {{"value": "{user_data.num_CNI_passeport}", "status_validation": "valid"}},
     "date_expiration": {{"value": "{user_data.date_expiration}", "status_validation": "valid"}}
 }}
