@@ -1,5 +1,9 @@
 import os
 from typing import List
+from dotenv import load_dotenv
+
+load_dotenv()
+
 
 class Settings:
     PROJECT_NAME: str = "KYC Validation Pipeline"
@@ -11,7 +15,7 @@ class Settings:
     # External Services
     DATA_PROVIDER_URL: str = os.getenv("DATA_PROVIDER_URL")
 
-    # KYC Callback (notification du service appelant une fois le traitement terminé)
+    # KYC Callback
     KYC_CALLBACK_URL: str = os.getenv("KYC_CALLBACK_URL")
     KYC_CALLBACK_TOKEN: str = os.getenv("KYC_CALLBACK_TOKEN")
     KYC_CALLBACK_TIMEOUT: float = float(os.getenv("KYC_CALLBACK_TIMEOUT", "10"))
@@ -27,5 +31,13 @@ class Settings:
     
     # Debug Mode
     DEBUG: bool = os.getenv("DEBUG", "False").lower() == "true"
+
+    # JWT Configuration
+    JWT_SECRET_KEY: str = os.getenv("JWT_SECRET_KEY", "change-me")
+    JWT_ALGORITHM: str = "HS256"
+    JWT_EXPIRE_MINUTES: int | None = None
+    raw_expire = os.getenv("JWT_EXPIRE_MINUTES")
+    if raw_expire is not None and raw_expire.strip().lower() not in {"false", "0", ""}:
+        JWT_EXPIRE_MINUTES = int(raw_expire)
 
 settings = Settings()

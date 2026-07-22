@@ -50,7 +50,7 @@ def test_invalid_fields_reduce_total_and_set_invalide(agent, raw_output_factory,
 
     agent._compute_percentages(raw, form)
 
-    assert raw["total_percentage"] == 40.0
+    assert raw["total_percentage"] == 50.0
     assert raw["state_status"] == "invalide"
 
 

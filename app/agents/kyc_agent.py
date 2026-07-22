@@ -76,7 +76,7 @@ class KYCAgent:
         "photo_CNI_verso": 50,
         "photo_passeport": 50,
         "nom_et_prenom": 30,
-        "date_naissance": 20,
+        "date_naissance":30,
         "sexe": 20,
         "pays": 25,
         "num_CNI_passeport": 50,

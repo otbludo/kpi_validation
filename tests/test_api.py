@@ -3,21 +3,32 @@ Tests de l'API FastAPI :
 - endpoint de santé
 - schéma de sortie (valeurs par défaut)
 - validation du formulaire KYC (422 si champs manquants)
-- flux /kyc/process avec l'agent mocké (aucun appel réseau/Groq)
+- flux /kyc/process avec l'agent mocké (aucun appel réseau)
 
 On utilise httpx.ASGITransport (compatible httpx>=0.28) plutôt que
 starlette.TestClient qui est incompatible avec cette version de httpx.
 """
+import jwt
 import httpx
 import pytest
 import app.api.v1.router as router_module
 from app.main import app
 from app.schemas.kyc_output import KYCOutputData, ValidatedField
+from app.core.config import settings
 
 
 def _async_client():
     transport = httpx.ASGITransport(app=app)
     return httpx.AsyncClient(transport=transport, base_url="http://test")
+
+
+def _auth_headers() -> dict:
+    token = jwt.encode(
+        {"sub": "test-user"},
+        settings.JWT_SECRET_KEY,
+        algorithm=settings.JWT_ALGORITHM,
+    )
+    return {"Authorization": f"Bearer {token}"}
 
 
 # ---------------------------------------------------------------------------
@@ -84,10 +95,22 @@ def _form_files():
 async def test_process_requires_fields():
     async with _async_client() as client:
         response = await client.post("/api/v1/kyc/process")
-    assert response.status_code == 422
+    assert response.status_code == 403
 
 
-async def test_process_success_with_mocked_agent(monkeypatch, valid_output_dict):
+async def test_process_requires_auth():
+    async with _async_client() as client:
+        response = await client.post(
+            "/api/v1/kyc/process",
+            data=_form_data(),
+            files=_form_files(),
+        )
+    assert response.status_code == 403
+    body = response.json()
+    assert body["detail"] == "Not authenticated"
+
+
+async def test_process_accepts_valid_jwt(monkeypatch, valid_output_dict):
     async def fake_process(form_data):
         assert form_data.kyc_id == "kyc-123"
         return KYCOutputData(**valid_output_dict)
@@ -99,12 +122,27 @@ async def test_process_success_with_mocked_agent(monkeypatch, valid_output_dict)
             "/api/v1/kyc/process",
             data=_form_data(),
             files=_form_files(),
+            headers=_auth_headers(),
         )
 
     assert response.status_code == 200
     body = response.json()
     assert body["donnees_output"]["state_status"] == "valide"
     assert body["donnees_output"]["total_percentage"] == 100.0
+
+
+async def test_process_rejects_invalid_jwt(monkeypatch):
+    async with _async_client() as client:
+        response = await client.post(
+            "/api/v1/kyc/process",
+            data=_form_data(),
+            files=_form_files(),
+            headers={"Authorization": "Bearer invalid-token"},
+        )
+
+    assert response.status_code == 401
+    body = response.json()
+    assert body["detail"] == "Token invalide"
 
 
 async def test_process_handles_internal_error(monkeypatch):
@@ -118,6 +156,7 @@ async def test_process_handles_internal_error(monkeypatch):
             "/api/v1/kyc/process",
             data=_form_data(),
             files=_form_files(),
+            headers=_auth_headers(),
         )
 
     assert response.status_code == 500

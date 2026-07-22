@@ -8,6 +8,12 @@ POST /api/v1/kyc/process
 
 Traite un dossier KYC complet et retourne un score de validation par champ.
 
+**Protégé par JWT** : header requis :
+
+```
+Authorization: Bearer <token>
+```
+
 ---
 
 ## Request
@@ -213,6 +219,8 @@ multipart/form-data
 | Code | Message | Cas |
 |------|---------|-----|
 | 400 | `Données de formulaire invalides : ...` | Champs manquants ou incohérents (`type_document` sans la photo correspondante) |
+| 401 | `Token expiré` / `Token invalide` | JWT absent, invalide ou expiré |
+| 403 | `Not authenticated` |Pas de JWT dans le header `Authorization` |
 | 422 | Erreur de validation FastAPI | Format des champs invalide (email, dates, etc.) |
 | 500 | `Erreur d'infrastructure interne : ...` | Erreur inattendue lors du traitement |
 
@@ -274,6 +282,8 @@ Le callback échoue silencieusement si le service distant est indisponible (pas 
 | `KYC_CALLBACK_URL` | - | URL du callback de notification |
 | `KYC_CALLBACK_TOKEN` | - | Token Bearer pour le callback |
 | `KYC_CALLBACK_TIMEOUT` | `10` | Timeout du callback en secondes |
+| `JWT_SECRET_KEY` | - | Clé secrète pour signer les tokens JWT |
+| `JWT_EXPIRE_MINUTES` | `60` | Durée de validité en minutes. Utiliser `False`, `0` ou chaîne vide pour désactiver l'expiration |
 | `ALLOWED_ORIGINS` | `*` | Origines CORS autorisées |
 | `OCR_LANGUAGE` | `fra` | Langue OCR |
 | `DEBUG` | `False` | Mode debug |
@@ -290,6 +300,7 @@ Le callback échoue silencieusement si le service distant est indisponible (pas 
 
 ```bash
 curl -X POST "http://localhost:8000/api/v1/kyc/process" \
+  -H "Authorization: Bearer <token>" \
   -F "photo_profile=@/path/to/selfie.jpg" \
   -F "photo_CNI_recto=@/path/to/cni_recto.jpg" \
   -F "photo_CNI_verso=@/path/to/cni_verso.jpg" \
@@ -315,6 +326,7 @@ curl -X POST "http://localhost:8000/api/v1/kyc/process" \
 import requests
 
 url = "http://localhost:8000/api/v1/kyc/process"
+headers = {"Authorization": "Bearer <token>"}
 files = {
     "photo_profile": open("selfie.jpg", "rb"),
     "photo_CNI_recto": open("cni_recto.jpg", "rb"),
@@ -336,7 +348,7 @@ data = {
     "date_expiration": "2035-01-01",
 }
 
-response = requests.post(url, files=files, data=data)
+response = requests.post(url, headers=headers, files=files, data=data)
 result = response.json()
 print(result["donnees_output"]["state_status"])
 print(result["donnees_output"]["total_percentage"])
@@ -355,6 +367,9 @@ formData.append("adresse_mail", "user@example.com");
 
 const response = await fetch("http://localhost:8000/api/v1/kyc/process", {
   method: "POST",
+  headers: {
+    "Authorization": "Bearer <token>",
+  },
   body: formData,
 });
 

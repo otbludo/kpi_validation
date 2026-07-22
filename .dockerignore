@@ -29,3 +29,4 @@ tests/**/*.jpeg
 tests/**/*.jpg
 eval_imga_flou.ipynb
 eval_accuracy.ipynb
+scripts/

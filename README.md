@@ -38,16 +38,17 @@ flowchart LR
 
 ## Stack technique
 
-| Composant | Technologie | Rôle |
-|-----------|-------------|------|
-| **API** | FastAPI + Uvicorn | Route principale, validation Pydantic |
-| **IA / Vision** | OpenRouter API (`meta-llama/llama-4-scout`) | Analyse OCR et validation des champs textuels |
-| **Reconnaissance faciale** | InsightFace (`buffalo_l`, ONNX Runtime) | Comparaison `photo_profile` vs photo document |
-| **Email** | Mailtrap (SMTP) | Notification des champs invalides |
-| **Callback** | httpx | Notification du service appelant |
-| **Images** | Pillow + OpenCV | Traitement et décodage des images |
-| **Conteneurisation** | Docker + Docker Compose | Build et run de l'API |
-| **Tests** | pytest + pytest-asyncio | Tests unitaires et d'intégration |
+| Composant                  | Technologie                                 | Rôle                                          |
+| -------------------------- | ------------------------------------------- | --------------------------------------------- |
+| **API**                    | FastAPI + Uvicorn                           | Route principale, validation Pydantic         |
+| **IA / Vision**            | OpenRouter API (`meta-llama/llama-4-scout`) | Analyse OCR et validation des champs textuels |
+| **Reconnaissance faciale** | InsightFace (`buffalo_l`, ONNX Runtime)     | Comparaison `photo_profile` vs photo document |
+| **Email**                  | Mailtrap (SMTP)                             | Notification des champs invalides             |
+| **Callback**               | httpx                                       | Notification du service appelant              |
+| **Images**                 | Pillow + OpenCV                             | Traitement et décodage des images             |
+| **Conteneurisation**       | Docker + Docker Compose                     | Build et run de l'API                         |
+| **Tests**                  | pytest + pytest-asyncio                     | Tests unitaires et d'intégration              |
+| **Auth**                   | JWT (PyJWT)                                 | Protection de la route `/api/v1/kyc/process`  |
 
 ### Modèles et seuils
 
@@ -55,6 +56,7 @@ flowchart LR
 - **InsightFace** : modèle `buffalo_l`, seuil de similarité cosinus >= `0.40` par défaut
 - **Score global** : commence à 100, pénalités par champ invalide, seuil de validité à 60
 - **Tesseract** : non utilisé dans le pipeline final (seul OpenRouter Vision valide les textes)
+- **JWT** : algorithme `HS256`, expiration configurable via `JWT_EXPIRE_MINUTES` (`False`, `0` ou chaîne vide = pas d'expiration)
 
 ---
 
@@ -109,6 +111,14 @@ SMTP_PASSWORD=...
 EMAIL_FROM=...
 KYC_CALLBACK_URL=...
 KYC_CALLBACK_TOKEN=...
+JWT_SECRET_KEY=...
+JWT_EXPIRE_MINUTES=60
+```
+
+Pour générer des tokens sans expiration :
+
+```env
+JWT_EXPIRE_MINUTES=False
 ```
 
 Variables optionnelles InsightFace :
@@ -128,13 +138,28 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 
 L'API est accessible sur `http://localhost:8000`.
 
-### 6. Tester la santé
+### 6. Authentification JWT
+
+La route `/api/v1/kyc/process` est protégée par JWT.  
+Générer un token avec la clé définie dans `.env` (`JWT_SECRET_KEY`) :
+
+```bash
+python3 -c "import jwt; print(jwt.encode({'sub':'user-123'}, '<JWT_SECRET_KEY>', algorithm='HS256'))"
+```
+
+Puis l’utiliser dans le header :
+
+```
+Authorization: Bearer <token>
+```
+
+### 7. Tester la santé
 
 ```bash
 curl http://localhost:8000/health
 ```
 
-### 7. Lancer les tests
+### 8. Lancer les tests
 
 Lancer tous les tests :
 
