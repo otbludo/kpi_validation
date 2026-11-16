@@ -22,27 +22,8 @@ os.environ.setdefault("KYC_CALLBACK_TIMEOUT", "5")
 # Fabriques de données de test
 # ---------------------------------------------------------------------------
 
-# Tous les champs analysés (identique à KYCAgent.ALL_FIELDS)
-ALL_FIELDS = [
-    "photo_profile",
-    "nom_et_prenom",
-    "adresse_mail",
-    "profession",
-    "numero_NUI",
-    "registre_commerce",
-    "date_naissance",
-    "sexe",
-    "pays",
-    "region",
-    "ville",
-    "adresse",
-    "code_postal",
-    "num_CNI_passeport",
-    "date_expiration",
-    "photo_CNI_recto",
-    "photo_CNI_verso",
-    "photo_passeport",
-]
+# Référentiel des champs : importé (et non dupliqué) depuis le domaine.
+from app.domain.kyc.fields import ALL_FIELDS  # noqa: E402
 
 
 def _make_raw_output(status_overrides=None):

@@ -3,8 +3,9 @@ Tests du service d'envoi de mail : rendu des templates HTML et envoi
 via SMTP (smtplib mocké, aucun envoi réel).
 """
 import pytest
-import app.services.mailtrap.mail_service as mail_module
-from app.services.mailtrap.mail_service import MailService
+import app.services.mailer.mail_service as mail_module
+from app.services.mailer.mail_service import MailService
+from app.core.exceptions import EmailDeliveryError
 
 
 @pytest.fixture
@@ -98,15 +99,14 @@ def test_send_email_success(service, monkeypatch):
     assert smtp.sent_message["Subject"] == "Sujet"
 
 
-def test_send_email_raises_http_exception_on_failure(service, monkeypatch):
-    from fastapi import HTTPException
+def test_send_email_raises_delivery_error_on_failure(service, monkeypatch):
 
     def boom(host, port):
         raise Exception("connexion refusée")
 
     monkeypatch.setattr(mail_module.smtplib, "SMTP", boom)
 
-    with pytest.raises(HTTPException):
+    with pytest.raises(EmailDeliveryError):
         service.send_email(
             email_to="dest@example.com",
             subject="Sujet",

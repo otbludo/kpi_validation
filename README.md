@@ -6,18 +6,21 @@
 flowchart LR
     A[Client / Frontend] -->|POST /api/v1/kyc/process| B[FastAPI Router]
     B --> C[KYCAgent.process]
+    C --> F[ImageLoader]
     C --> D[OpenRouter Vision]
-    C --> E[InsightFace]
-    C --> F[OCR Engine]
-    C --> G[Mailtrap]
-    C --> H[KYC Callback]
+    C --> E[FaceMatcher / InsightFace]
+    C --> V[Domaine : validators / scoring / reasons]
+    C --> N[KYCNotifier]
+    N --> G[Mailtrap]
+    N --> H[KYC Callback]
 
-    D -->|Analyse texte document| C
+    F -->|Octets des images| C
+    D -->|Netteté + analyse du document| C
     E -->|Comparaison visage profil vs document| C
-    F -->|Extraction images| C
+    V -->|Statuts, score, motifs| C
 
-    C -->|Mail si champs invalides| G
-    C -->|POST callback| H
+    N -->|Mail si champs invalides| G
+    N -->|POST callback| H
     C -->|Réponse JSON| B
     B -->|200 + KYCOutputResponse| A
 ```
@@ -25,14 +28,69 @@ flowchart LR
 ### Flux de traitement
 
 1. **Réception** : La route `POST /api/v1/kyc/process` reçoit un formulaire `multipart/form-data` contenant les champs textuels et les fichiers images.
-2. **Extraction images** : Les octets des fichiers sont extraits via `ocr_engine`.
-3. **Analyse document (OpenRouter Vision)** : Les images du document (CNI recto/verso ou passeport) sont envoyées au modèle `meta-llama/llama-4-scout` qui vérifie la cohérence des champs textuels déclarés.
-4. **Reconnaissance faciale (InsightFace)** : Le `photo_profile` est comparé à la photo du document via `buffalo_l` + cosine similarity. Si les visages ne correspondent pas, `photo_profile` est marqué `invalid`.
-5. **Validation locale** : Les champs `date_naissance`, `date_expiration`, `sexe`, `num_CNI_passeport` et `nom_et_prenom` sont validés localement (format, bornes, valeurs autorisées).
-6. **Calcul du score** : `total_percentage` commence à 100. Chaque champ invalide dans les champs à pénalité retire sa pénalité. `state_status` est `valide` uniquement si `total_percentage >= 60`.
-7. **Notification email** : Si des champs sont invalides, un email de type `warning` est envoyé via Mailtrap avec les raisons d'invalidité.
-8. **Callback HTTP** : Un `POST` est envoyé à `KYC_CALLBACK_URL` avec le score et la raison du rejet.
-9. **Réponse** : Retour d'un objet `KYCOutputResponse` avec le statut par champ, le score global et la description des champs invalides.
+2. **Extraction images** : Les octets des fichiers sont extraits via `image_loader`.
+3. **Contrôle de netteté** : Chaque photo du document est soumise au modèle de vision. Si une image est floue, le traitement s'arrête et une réponse `{message, reasons}` est renvoyée.
+4. **Analyse document (OpenRouter Vision)** : Les images du document (CNI recto/verso ou passeport) sont envoyées au modèle `meta-llama/llama-4-scout` qui vérifie la cohérence des champs textuels déclarés. Si le modèle ne renvoie aucun résultat, la requête échoue en `502` : aucun dossier n'est validé par défaut.
+5. **Reconnaissance faciale (InsightFace)** : Le `photo_profile` est comparé à la photo du document via `buffalo_l` + cosine similarity. Si les visages ne correspondent pas, `photo_profile` est marqué `invalid`.
+6. **Validation locale** : Les champs `date_naissance`, `date_expiration`, `sexe`, `num_CNI_passeport` et `nom_et_prenom` sont validés localement (format, bornes, valeurs autorisées).
+7. **Calcul du score** : `total_percentage` commence à 100. Chaque champ invalide dans les champs à pénalité retire sa pénalité. `state_status` est `valide` uniquement si `total_percentage >= 60`.
+8. **Notification email** : Si des champs sont invalides, un email de type `warning` est envoyé via Mailtrap avec les raisons d'invalidité.
+9. **Callback HTTP** : Un `POST` est envoyé à `KYC_CALLBACK_URL` avec le score et la raison du rejet.
+10. **Réponse** : Retour d'un objet `KYCOutputResponse` avec le statut par champ, le score global et la description des champs invalides.
+
+---
+
+## Architecture
+
+Le projet suit une architecture en couches : chaque couche ne dépend que des
+couches situées en dessous d'elle.
+
+```
+app/
+├── main.py                    # Fabrique de l'application FastAPI (create_app)
+├── api/v1/                    # Couche HTTP : routes, dépendances, codes d'erreur
+│   ├── router.py              #   Agrégation des routeurs
+│   ├── dependencies.py        #   Déclaration du formulaire multipart
+│   └── endpoints/kyc.py       #   POST /kyc/process
+├── agents/
+│   └── kyc_agent.py           # Orchestration du pipeline (aucune règle métier)
+├── domain/kyc/                # Règles métier PURES (aucun I/O, testables isolément)
+│   ├── fields.py              #   Référentiel des champs, libellés, pénalités
+│   ├── dates.py               #   Lecture des dates saisies
+│   ├── validators.py          #   Contrôles de format et de plausibilité
+│   ├── scoring.py             #   Calcul du score de confiance
+│   ├── reasons.py             #   Motifs de rejet lisibles
+│   └── prompts.py             #   Prompts envoyés au modèle de vision
+├── services/                  # Intégrations avec les systèmes externes
+│   ├── openrouter_vision.py   #   Modèle de vision (netteté + analyse)
+│   ├── face_matcher.py        #   InsightFace (chargé à la première utilisation)
+│   ├── image_loader.py        #   Lecture des fichiers envoyés
+│   ├── kyc_notifier.py        #   Email + callback de fin de traitement
+│   ├── kyc_callback.py        #   Client du webhook appelant
+│   └── mailer/                #   Envoi SMTP et gabarits HTML
+├── schemas/                   # Modèles d'entrée (dataclass) et de sortie (Pydantic)
+├── security/                  # JWT : création, vérification, dépendance FastAPI
+├── core/                      # Configuration, logging, exceptions, middlewares
+└── messages/                  # Messages d'erreur centralisés
+```
+
+### Principes
+
+- **Configuration centralisée** : toutes les variables d'environnement sont lues dans `app/core/config.py`, nulle part ailleurs.
+- **Domaine pur** : `app/domain/` ne fait aucun appel réseau ni lecture de fichier ; c'est là que vivent les règles à faire évoluer (pénalités, seuil, formats).
+- **Exceptions métier** : les services lèvent des exceptions de `app/core/exceptions.py` ; seule la couche API les traduit en codes HTTP.
+- **Injection de dépendances** : `KYCAgent` et `KYCNotifier` reçoivent leurs services par le constructeur, ce qui permet de les remplacer par des doublures dans les tests.
+- **Appels bloquants hors boucle** : les SDK synchrones (OpenAI, InsightFace, smtplib) sont exécutés via `asyncio.to_thread`.
+
+### Où modifier quoi ?
+
+| Besoin | Fichier |
+| --- | --- |
+| Changer une pénalité ou le seuil de validité | `app/domain/kyc/fields.py` |
+| Ajouter une règle de format sur un champ | `app/domain/kyc/validators.py` (+ motif dans `reasons.py`) |
+| Ajuster le prompt du modèle | `app/domain/kyc/prompts.py` |
+| Ajouter une variable d'environnement | `app/core/config.py` et `.env.example` |
+| Ajouter un endpoint | `app/api/v1/endpoints/` puis `router.py` |
 
 ---
 

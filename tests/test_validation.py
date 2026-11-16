@@ -1,12 +1,15 @@
 """
-Tests de la logique de validation de KYCAgent :
-- application des pénalités (_compute_percentages)
+Tests de la logique métier KYC (couche domaine) :
+- application des pénalités (scoring.compute_scores)
 - état global (state_status) et score (total_percentage)
-- détection des champs invalides et raison du rejet
+- détection des champs invalides et raison du rejet (reasons)
+- contrôles locaux de format (validators)
 """
 import pytest
 from app.agents.kyc_agent import KYCAgent
-import app.agents.kyc_agent as agent_module
+from app.domain.kyc.reasons import build_rejection_reason, collect_invalid_fields
+from app.domain.kyc.scoring import compute_scores
+from app.domain.kyc.validators import apply_local_validations
 
 
 @pytest.fixture
@@ -15,14 +18,14 @@ def agent():
 
 
 # ---------------------------------------------------------------------------
-# _compute_percentages
+# compute_scores
 # ---------------------------------------------------------------------------
 
-def test_cni_all_valid_gives_100_and_valide(agent, raw_output_factory, form_factory):
+def test_cni_all_valid_gives_100_and_valide(raw_output_factory, form_factory):
     raw = raw_output_factory()
     form = form_factory(type_document="CNI")
 
-    agent._compute_percentages(raw, form)
+    compute_scores(raw, form)
 
     assert raw["total_percentage"] == 100.0
     assert raw["state_status"] == "valide"
@@ -30,11 +33,11 @@ def test_cni_all_valid_gives_100_and_valide(agent, raw_output_factory, form_fact
     assert raw["photo_passeport"]["percentage"] == 0.0
 
 
-def test_passeport_excludes_cni_photos(agent, raw_output_factory, form_factory):
+def test_passeport_excludes_cni_photos(raw_output_factory, form_factory):
     raw = raw_output_factory()
     form = form_factory(type_document="passeport")
 
-    agent._compute_percentages(raw, form)
+    compute_scores(raw, form)
 
     assert raw["total_percentage"] == 100.0
     assert raw["state_status"] == "valide"
@@ -44,31 +47,31 @@ def test_passeport_excludes_cni_photos(agent, raw_output_factory, form_factory):
     assert raw["photo_passeport"]["percentage"] == 0.0
 
 
-def test_invalid_fields_reduce_total_and_set_invalide(agent, raw_output_factory, form_factory):
+def test_invalid_fields_reduce_total_and_set_invalide(raw_output_factory, form_factory):
     raw = raw_output_factory({"nom_et_prenom": "invalid", "sexe": "invalid"})
     form = form_factory(type_document="CNI")
 
-    agent._compute_percentages(raw, form)
+    compute_scores(raw, form)
 
     assert raw["total_percentage"] == 50.0
     assert raw["state_status"] == "invalide"
 
 
-def test_excluded_field_invalid_does_not_affect_score(agent, raw_output_factory, form_factory):
+def test_excluded_field_invalid_does_not_affect_score(raw_output_factory, form_factory):
     raw = raw_output_factory({"photo_passeport": "invalid"})
     form = form_factory(type_document="CNI")
 
-    agent._compute_percentages(raw, form)
+    compute_scores(raw, form)
 
     assert raw["total_percentage"] == 100.0
     assert raw["state_status"] == "valide"
 
 
-def test_penalty_fields_invalid_set_percentage_to_penalty(agent, raw_output_factory, form_factory):
+def test_penalty_fields_invalid_set_percentage_to_penalty(raw_output_factory, form_factory):
     raw = raw_output_factory({"photo_profile": "invalid", "num_CNI_passeport": "invalid"})
     form = form_factory(type_document="CNI")
 
-    agent._compute_percentages(raw, form)
+    compute_scores(raw, form)
 
     assert raw["total_percentage"] == 0.0
     assert raw["state_status"] == "invalide"
@@ -76,56 +79,56 @@ def test_penalty_fields_invalid_set_percentage_to_penalty(agent, raw_output_fact
     assert raw["num_CNI_passeport"]["percentage"] == 50
 
 
-def test_threshold_60_makes_valide(agent, raw_output_factory, form_factory):
+def test_threshold_60_makes_valide(raw_output_factory, form_factory):
     raw = raw_output_factory({"photo_profile": "invalid"})
     form = form_factory(type_document="CNI")
 
-    agent._compute_percentages(raw, form)
+    compute_scores(raw, form)
 
     assert raw["total_percentage"] == 50.0
     assert raw["state_status"] == "invalide"
 
 
-def test_non_penalty_field_invalid_does_not_affect_score(agent, raw_output_factory, form_factory):
+def test_non_penalty_field_invalid_does_not_affect_score(raw_output_factory, form_factory):
     raw = raw_output_factory({"adresse_mail": "invalid", "profession": "invalid"})
     form = form_factory(type_document="CNI")
 
-    agent._compute_percentages(raw, form)
+    compute_scores(raw, form)
 
     assert raw["total_percentage"] == 100.0
     assert raw["state_status"] == "valide"
 
 
 # ---------------------------------------------------------------------------
-# _get_invalid_field_labels / _build_rejection_reason
+# collect_invalid_fields / build_rejection_reason
 # ---------------------------------------------------------------------------
 
-def test_get_invalid_fields_with_reasons_uses_readable_labels(agent, raw_output_factory, form_factory):
+def test_get_invalid_fields_with_reasons_uses_readable_labels(raw_output_factory, form_factory):
     raw = raw_output_factory({"nom_et_prenom": "invalid", "date_naissance": "invalid"})
     form = form_factory(type_document="CNI", date_naissance="07/05/200")
 
-    fields = agent._get_invalid_fields_with_reasons(raw, form)
+    fields = collect_invalid_fields(raw, form)
 
     assert len(fields) == 2
     assert {"label": "Nom et prénom", "reason": "Nom et prénom invalide (2 à 50 caractères alphabétiques requis)"} in fields
     assert {"label": "Date de naissance", "reason": "Format de date invalide (attendu: AAAA-MM-JJ ou JJ-MM-AAAA)"} in fields
 
 
-def test_get_invalid_fields_with_reasons_ignores_excluded_fields(agent, raw_output_factory, form_factory):
+def test_get_invalid_fields_with_reasons_ignores_excluded_fields(raw_output_factory, form_factory):
     raw = raw_output_factory({"photo_CNI_recto": "invalid"})
     form = form_factory(type_document="passeport")
 
-    fields = agent._get_invalid_fields_with_reasons(raw, form)
+    fields = collect_invalid_fields(raw, form)
 
     assert fields == []
 
 
-def test_build_rejection_reason_empty_when_no_invalid(agent):
-    assert agent._build_rejection_reason([]) == ""
+def test_build_rejection_reason_empty_when_no_invalid():
+    assert build_rejection_reason([]) == ""
 
 
-def test_build_rejection_reason_lists_fields_with_reasons(agent):
-    reason = agent._build_rejection_reason([
+def test_build_rejection_reason_lists_fields_with_reasons():
+    reason = build_rejection_reason([
         {"label": "Nom et prénom", "reason": "Nom et prénom invalide (2 à 50 caractères alphabétiques requis)"},
         {"label": "Sexe", "reason": "Valeur de sexe invalide (valeurs autorisées: M, F, Masculin, Féminin, Homme, Femme)"}
     ])
@@ -137,13 +140,14 @@ def test_build_rejection_reason_lists_fields_with_reasons(agent):
     assert reason.endswith(".")
 
 
-def test_process_adds_description_with_invalid_fields(agent, monkeypatch):
+async def test_process_adds_description_with_invalid_fields(agent, monkeypatch):
     async def fake_get_bytes(upload):
         return b"image-bytes"
 
-    monkeypatch.setattr("app.services.ocr_engine.ocr_engine.get_image_bytes", fake_get_bytes)
+    monkeypatch.setattr(agent.image_loader, "get_image_bytes", fake_get_bytes)
     monkeypatch.setattr(
-        "app.services.insightface.insightface_engine.compare",
+        agent.face_matcher,
+        "compare",
         lambda a, b, threshold=0.5: (True, 0.1),
     )
     monkeypatch.setattr(
@@ -161,19 +165,19 @@ def test_process_adds_description_with_invalid_fields(agent, monkeypatch):
         },
     )
     monkeypatch.setattr(
-        agent_module.openrouter_vision,
+        agent.vision_engine,
         "check_blur",
         lambda images: (False, []),
     )
 
     mail_calls = []
-    monkeypatch.setattr("app.services.mailtrap.mail_service.mailService.send_email", lambda **k: mail_calls.append(k))
+    monkeypatch.setattr(agent.notifier.mailer, "send_email", lambda **k: mail_calls.append(k))
 
     callback_calls = []
     async def fake_notify(**kwargs):
         callback_calls.append(kwargs)
         return True
-    monkeypatch.setattr("app.services.kyc_callback.kyc_callback_service.notify", fake_notify)
+    monkeypatch.setattr(agent.notifier.callback, "notify", fake_notify)
 
     form = type('F', (), {
         'type_document': 'CNI',
@@ -193,8 +197,7 @@ def test_process_adds_description_with_invalid_fields(agent, monkeypatch):
         'adresse_mail': 'user@example.com',
     })()
 
-    import asyncio
-    result = asyncio.get_event_loop().run_until_complete(agent.process(form))
+    result = await agent.process(form)
 
     assert "Date d'expiration déjà passée" in result.description
     assert len(mail_calls) == 1
@@ -203,85 +206,110 @@ def test_process_adds_description_with_invalid_fields(agent, monkeypatch):
 
 
 # ---------------------------------------------------------------------------
-# _apply_local_validations
+# apply_local_validations
 # ---------------------------------------------------------------------------
 
-def test_local_validation_invalid_date_naissance_format(agent, form_factory):
+def test_local_validation_invalid_date_naissance_format(form_factory):
     form = form_factory(type_document="CNI", date_naissance="07/05/200")
     raw = {
         "date_naissance": {"value": "07/05/200", "status_validation": "valid"}
     }
-    agent._apply_local_validations(raw, form)
+    apply_local_validations(raw, form)
     assert raw["date_naissance"]["status_validation"] == "invalid"
 
 
-def test_local_validation_valid_date_naissance_format(agent, form_factory):
+def test_local_validation_valid_date_naissance_format(form_factory):
     form = form_factory(type_document="CNI", date_naissance="2000-05-07")
     raw = {
         "date_naissance": {"value": "2000-05-07", "status_validation": "valid"}
     }
-    agent._apply_local_validations(raw, form)
+    apply_local_validations(raw, form)
     assert raw["date_naissance"]["status_validation"] == "valid"
 
 
-def test_local_validation_valid_date_naissance_format_with_slash(agent, form_factory):
+def test_local_validation_valid_date_naissance_format_with_slash(form_factory):
     form = form_factory(type_document="CNI", date_naissance="07/05/2003")
     raw = {
         "date_naissance": {"value": "07/05/2003", "status_validation": "valid"}
     }
-    agent._apply_local_validations(raw, form)
+    apply_local_validations(raw, form)
     assert raw["date_naissance"]["status_validation"] == "valid"
 
 
-def test_local_validation_valid_date_naissance_format_with_dot(agent, form_factory):
+def test_local_validation_valid_date_naissance_format_with_dot(form_factory):
     form = form_factory(type_document="CNI", date_naissance="07.05.2003")
     raw = {
         "date_naissance": {"value": "07.05.2003", "status_validation": "valid"}
     }
-    agent._apply_local_validations(raw, form)
+    apply_local_validations(raw, form)
     assert raw["date_naissance"]["status_validation"] == "valid"
 
 
-def test_local_validation_invalid_date_expiration_past(agent, form_factory):
+def test_local_validation_invalid_date_expiration_past(form_factory):
     form = form_factory(type_document="CNI", date_expiration="2000-01-01")
     raw = {
         "date_expiration": {"value": "2000-01-01", "status_validation": "valid"}
     }
-    agent._apply_local_validations(raw, form)
+    apply_local_validations(raw, form)
     assert raw["date_expiration"]["status_validation"] == "invalid"
 
 
-def test_local_validation_valid_date_expiration_format_with_slash(agent, form_factory):
+def test_local_validation_valid_date_expiration_format_with_slash(form_factory):
     form = form_factory(type_document="CNI", date_expiration="23/05/2037")
     raw = {
         "date_expiration": {"value": "23/05/2037", "status_validation": "valid"}
     }
-    agent._apply_local_validations(raw, form)
+    apply_local_validations(raw, form)
     assert raw["date_expiration"]["status_validation"] == "valid"
 
 
-def test_local_validation_invalid_sexe(agent, form_factory):
+def test_local_validation_invalid_sexe(form_factory):
     form = form_factory(type_document="CNI", sexe="X")
     raw = {
         "sexe": {"value": "X", "status_validation": "valid"}
     }
-    agent._apply_local_validations(raw, form)
+    apply_local_validations(raw, form)
     assert raw["sexe"]["status_validation"] == "invalid"
 
 
-def test_local_validation_invalid_num_CNI_too_short(agent, form_factory):
+def test_local_validation_invalid_num_CNI_too_short(form_factory):
     form = form_factory(type_document="CNI", num_CNI_passeport="A1")
     raw = {
         "num_CNI_passeport": {"value": "A1", "status_validation": "valid"}
     }
-    agent._apply_local_validations(raw, form)
+    apply_local_validations(raw, form)
     assert raw["num_CNI_passeport"]["status_validation"] == "invalid"
 
 
-def test_local_validation_invalid_nom_et_prenom_empty(agent, form_factory):
+def test_local_validation_invalid_nom_et_prenom_empty(form_factory):
     form = form_factory(type_document="CNI", nom_et_prenom="")
     raw = {
         "nom_et_prenom": {"value": "", "status_validation": "valid"}
     }
-    agent._apply_local_validations(raw, form)
+    apply_local_validations(raw, form)
     assert raw["nom_et_prenom"]["status_validation"] == "invalid"
+
+
+def test_reason_for_mismatched_slash_date_is_not_a_format_error(raw_output_factory, form_factory):
+    """Une date valide au format JJ/MM/AAAA, mais non conforme au document, n'est pas une erreur de format."""
+    raw = raw_output_factory({"date_naissance": "invalid"})
+    form = form_factory(type_document="CNI", date_naissance="07/05/2003")
+
+    fields = collect_invalid_fields(raw, form)
+
+    assert fields == [{"label": "Date de naissance", "reason": "Ne correspond pas aux informations du document"}]
+
+
+def test_invalid_photo_fields_do_not_read_uploaded_file(raw_output_factory, form_factory):
+    """Régression : un champ photo invalide contient un UploadFile, pas une chaîne."""
+    from io import BytesIO
+    from fastapi import UploadFile
+
+    upload = UploadFile(file=BytesIO(b"img"), filename="selfie.png")
+    raw = raw_output_factory({"photo_profile": "invalid", "photo_CNI_recto": "invalid"})
+    form = form_factory(type_document="CNI", photo_profile=upload, photo_CNI_recto=upload)
+
+    fields = collect_invalid_fields(raw, form)
+
+    assert {"label": "Photo de profil", "reason": "Photo de profil ne correspond pas à la photo du document"} in fields
+    assert {"label": "Photo CNI (Recto)", "reason": "Document non fourni"} in fields

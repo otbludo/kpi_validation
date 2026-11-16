@@ -2,17 +2,15 @@
 Tests des services :
 - OpenRouterVisionEngine : analyse JSON via OpenRouter (Llama 4 Scout)
 - KYCCallbackService : envoi du callback (httpx mocké)
-- OCREngine : lecture des octets d'un UploadFile
+- ImageLoader : lecture des octets d'un UploadFile
 """
-import os
 import json
 import base64
 import pytest
-from types import SimpleNamespace
 import app.services.kyc_callback as cb_module
 from app.services.openrouter_vision import OpenRouterVisionEngine
 from app.services.kyc_callback import KYCCallbackService
-from app.services.ocr_engine import ocr_engine
+from app.services.image_loader import image_loader
 
 
 # ---------------------------------------------------------------------------
@@ -119,6 +117,7 @@ def test_analyze_json_passes_correct_config(monkeypatch):
     assert captured["model"] == "meta-llama/llama-4-scout-17b-16e-instruct"
     assert captured["temperature"] == 0.0
     assert captured["response_format"] == {"type": "json_object"}
+    assert captured["max_tokens"] == 1024
 
 
 def test_analyze_json_uses_openrouter_base_url(monkeypatch):
@@ -241,7 +240,7 @@ async def test_callback_notify_returns_false_on_failure(fake_httpx):
 
 
 # ---------------------------------------------------------------------------
-# OCREngine
+# ImageLoader
 # ---------------------------------------------------------------------------
 
 class _FakeUpload:
@@ -256,14 +255,89 @@ class _FakeUpload:
         self.seeked_to = pos
 
 
-async def test_ocr_get_image_bytes_reads_and_rewinds():
+async def test_image_loader_get_image_bytes_reads_and_rewinds():
     upload = _FakeUpload(b"image-bytes")
 
-    result = await ocr_engine.get_image_bytes(upload)
+    result = await image_loader.get_image_bytes(upload)
 
     assert result == b"image-bytes"
     assert upload.seeked_to == 0
 
 
-async def test_ocr_get_image_bytes_returns_empty_for_none():
-    assert await ocr_engine.get_image_bytes(None) == b""
+async def test_image_loader_get_image_bytes_returns_empty_for_none():
+    assert await image_loader.get_image_bytes(None) == b""
+
+
+def test_analyze_json_retries_without_response_format_when_unsupported(monkeypatch):
+    """OpenRouter renvoie 404 si aucun fournisseur ne supporte response_format."""
+    import httpx
+    from openai import NotFoundError
+
+    calls = []
+
+    class _FakeResponse:
+        class _Choice:
+            class _Message:
+                content = 'Voici : {"ok": true}'
+            message = _Message()
+        choices = [_Choice()]
+
+    class _FakeCompletions:
+        def create(self, **kwargs):
+            calls.append(kwargs)
+            if "response_format" in kwargs:
+                request = httpx.Request("POST", "https://openrouter.ai/api/v1/chat/completions")
+                raise NotFoundError(
+                    "No endpoints found",
+                    response=httpx.Response(404, request=request),
+                    body=None,
+                )
+            return _FakeResponse()
+
+    class _FakeChat:
+        completions = _FakeCompletions()
+
+    class _FakeClient:
+        def __init__(self, *args, **kwargs):
+            self.chat = _FakeChat()
+
+    monkeypatch.setattr("app.services.openrouter_vision.OpenAI", lambda **kwargs: _FakeClient(**kwargs))
+    engine = OpenRouterVisionEngine(api_key="test-key")
+
+    result = engine.analyze_json("prompt", images=[b"img"])
+
+    assert result == {"ok": True}
+    assert len(calls) == 2
+    assert "response_format" not in calls[1]
+
+
+def _engine_returning(response):
+    """Moteur dont le client renvoie toujours ``response``."""
+    class _FakeCompletions:
+        def create(self, **kwargs):
+            return response
+
+    class _FakeClient:
+        chat = type("Chat", (), {"completions": _FakeCompletions()})()
+
+    engine = OpenRouterVisionEngine(api_key="test-key")
+    engine.client = _FakeClient()
+    return engine
+
+
+def test_analyze_json_handles_200_without_choices():
+    """OpenRouter peut répondre 200 avec choices=None et un objet error."""
+    from types import SimpleNamespace
+    engine = _engine_returning(SimpleNamespace(choices=None, error={"code": 502, "message": "upstream"}))
+
+    assert engine.analyze_json("prompt", images=[b"img"]) == {}
+
+
+def test_check_blur_treats_200_without_choices_as_unreadable():
+    from types import SimpleNamespace
+    engine = _engine_returning(SimpleNamespace(choices=None, error={"code": 502}))
+
+    is_blurry, reasons = engine.check_blur([b"img"])
+
+    assert is_blurry is True
+    assert "réponse vide du fournisseur" in reasons[0]

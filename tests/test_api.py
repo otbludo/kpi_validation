@@ -4,16 +4,17 @@ Tests de l'API FastAPI :
 - schéma de sortie (valeurs par défaut)
 - validation du formulaire KYC (422 si champs manquants)
 - flux /kyc/process avec l'agent mocké (aucun appel réseau)
+- codes d'erreur métier (400 dossier incomplet, 502 modèle de vision indisponible)
 
 On utilise httpx.ASGITransport (compatible httpx>=0.28) plutôt que
 starlette.TestClient qui est incompatible avec cette version de httpx.
 """
 import jwt
 import httpx
-import pytest
-import app.api.v1.router as router_module
+import app.api.v1.endpoints.kyc as router_module
 from app.main import app
-from app.schemas.kyc_output import KYCOutputData, ValidatedField
+from app.core.exceptions import VisionAnalysisError
+from app.schemas.kyc_output import DocumentQualityRejection, KYCOutputData, ValidatedField
 from app.core.config import settings
 
 
@@ -160,3 +161,70 @@ async def test_process_handles_internal_error(monkeypatch):
         )
 
     assert response.status_code == 500
+
+
+async def test_process_returns_400_when_cni_recto_missing():
+    """Une CNI sans recto est une erreur client (400), pas une erreur serveur."""
+    async with _async_client() as client:
+        response = await client.post(
+            "/api/v1/kyc/process",
+            data=_form_data(),
+            files={"photo_profile": ("profile.jpg", b"fake", "image/jpeg")},
+            headers=_auth_headers(),
+        )
+
+    assert response.status_code == 400
+    assert "photo_CNI_recto" in response.json()["detail"]
+
+
+async def test_process_returns_blur_rejection_payload(monkeypatch):
+    async def fake_process(form_data):
+        return DocumentQualityRejection(message="flou", reasons=["Document principal : flou"])
+
+    monkeypatch.setattr(router_module.kyc_agent, "process", fake_process)
+
+    async with _async_client() as client:
+        response = await client.post(
+            "/api/v1/kyc/process",
+            data=_form_data(),
+            files=_form_files(),
+            headers=_auth_headers(),
+        )
+
+    assert response.status_code == 200
+    assert response.json() == {"message": "flou", "reasons": ["Document principal : flou"]}
+
+
+async def test_process_returns_502_when_vision_unavailable(monkeypatch):
+    async def fake_process(form_data):
+        raise VisionAnalysisError("indisponible")
+
+    monkeypatch.setattr(router_module.kyc_agent, "process", fake_process)
+
+    async with _async_client() as client:
+        response = await client.post(
+            "/api/v1/kyc/process",
+            data=_form_data(),
+            files=_form_files(),
+            headers=_auth_headers(),
+        )
+
+    assert response.status_code == 502
+
+
+async def test_internal_error_details_are_not_leaked(monkeypatch):
+    async def boom(form_data):
+        raise RuntimeError("secret interne")
+
+    monkeypatch.setattr(router_module.kyc_agent, "process", boom)
+
+    async with _async_client() as client:
+        response = await client.post(
+            "/api/v1/kyc/process",
+            data=_form_data(),
+            files=_form_files(),
+            headers=_auth_headers(),
+        )
+
+    assert response.status_code == 500
+    assert "secret interne" not in response.text

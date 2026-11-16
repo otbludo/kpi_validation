@@ -206,8 +206,8 @@ multipart/form-data
 | `photo_CNI_verso` | 50 |
 | `photo_passeport` | 50 |
 | `nom_et_prenom` | 30 |
-| `date_naissance` | 20 |
-| `sexe` | 30 |
+| `date_naissance` | 30 |
+| `sexe` | 20 |
 | `pays` | 25 |
 | `num_CNI_passeport` | 50 |
 | `date_expiration` | 30 |
@@ -218,11 +218,25 @@ multipart/form-data
 
 | Code | Message | Cas |
 |------|---------|-----|
-| 400 | `Données de formulaire invalides : ...` | Champs manquants ou incohérents (`type_document` sans la photo correspondante) |
-| 401 | `Token expiré` / `Token invalide` | JWT absent, invalide ou expiré |
-| 403 | `Not authenticated` |Pas de JWT dans le header `Authorization` |
-| 422 | Erreur de validation FastAPI | Format des champs invalide (email, dates, etc.) |
-| 500 | `Erreur d'infrastructure interne : ...` | Erreur inattendue lors du traitement |
+| 400 | `Invalid form data: ...` | Dossier incomplet : `type_document` sans la photo correspondante, ou image illisible |
+| 401 | `Expired JWT token` / `Invalid JWT token` | JWT invalide ou expiré |
+| 403 | `Not authenticated` | Pas de JWT dans le header `Authorization` |
+| 422 | Erreur de validation FastAPI | Format des champs invalide (email, `type_document`, champ obligatoire manquant) |
+| 502 | `Le modèle de vision n'a renvoyé aucun résultat exploitable.` | Le modèle de vision (OpenRouter) est indisponible ou a renvoyé une réponse vide. Aucun verdict n'est rendu : le dossier peut être resoumis. |
+| 500 | `Internal server error` | Erreur inattendue. Le détail est journalisé côté serveur et n'est pas exposé au client. |
+
+### Document flou (200)
+
+Si une photo de la pièce d'identité est jugée floue, l'analyse est interrompue
+**avant** toute validation de champ (aucun email ni callback n'est envoyé) et
+la réponse a la forme suivante :
+
+```json
+{
+  "message": "Un ou plusieurs documents sont flous ou illisibles. Veuillez fournir une image plus claire.",
+  "reasons": ["Document principal : image floue ou illisible (flou)"]
+}
+```
 
 ---
 
@@ -272,20 +286,19 @@ Le callback échoue silencieusement si le service distant est indisponible (pas 
 | Variable | Défaut | Description |
 |----------|--------|-------------|
 | `OPENROUTER_API_KEY` | - | Clé API OpenRouter pour le modèle de vision |
+| `OPENROUTER_MODEL` | `meta-llama/llama-4-scout-17b-16e-instruct` | Modèle de vision utilisé |
+| `OPENROUTER_MAX_TOKENS` | `1024` | Plafond de tokens de la réponse d'analyse (évite l'erreur 402 de réservation de crédits) |
 | `SMTP_HOST` | `sandbox.smtp.mailtrap.io` | Hôte SMTP |
-| `SMTP_PORT` | `2525` | Port SMTP |
+| `SMTP_PORT` | `587` | Port SMTP (`2525` pour Mailtrap) |
 | `SMTP_USER` | - | Utilisateur SMTP |
 | `SMTP_PASSWORD` | - | Mot de passe SMTP |
 | `EMAIL_FROM` | - | Expéditeur des emails |
-| `EMAIL_FROM_NAME` | `KYC Service` | Nom de l'expéditeur |
-| `DATA_PROVIDER_URL` | - | URL du microservice de données brutes |
 | `KYC_CALLBACK_URL` | - | URL du callback de notification |
 | `KYC_CALLBACK_TOKEN` | - | Token Bearer pour le callback |
 | `KYC_CALLBACK_TIMEOUT` | `10` | Timeout du callback en secondes |
 | `JWT_SECRET_KEY` | - | Clé secrète pour signer les tokens JWT |
 | `JWT_EXPIRE_MINUTES` | `60` | Durée de validité en minutes. Utiliser `False`, `0` ou chaîne vide pour désactiver l'expiration |
-| `ALLOWED_ORIGINS` | `*` | Origines CORS autorisées |
-| `OCR_LANGUAGE` | `fra` | Langue OCR |
+| `ALLOWED_ORIGINS` | `localhost:5173` + front de prod | Origines CORS autorisées (séparées par des virgules) |
 | `DEBUG` | `False` | Mode debug |
 | `INSIGHTFACE_MODEL` | `buffalo_l` | Modèle InsightFace pour la reconnaissance faciale |
 | `INSIGHTFACE_PROVIDERS` | `CPUExecutionProvider` | Backends d'exécution InsightFace |
